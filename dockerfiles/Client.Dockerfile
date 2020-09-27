@@ -10,6 +10,6 @@ WORKDIR /opt/app/services/client
 COPY services/client .
 RUN pip install -r requirements.txt
 
-ENV PYTHONPATH "${PYTHONPATH}:/opt/app/:/opt/app/services/"
+ENV PYTHONPATH "${PYTHONPATH}:/opt/app/"
 
 CMD python __main__.py
