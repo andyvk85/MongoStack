@@ -1,0 +1,46 @@
+version: "3.7"
+
+services:
+  mongodb-demo:
+    container_name: mongodb-demo
+    build:
+      context: .
+      dockerfile: dockerfiles/MongoDB.Dockerfile
+    restart: unless-stopped
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=mongoadmin
+      - MONGO_INITDB_ROOT_PASSWORD=demo
+    expose:
+      - "27017"
+    volumes:
+      - /home/andy/dockerfiles/MongoStack/mongodb-demo:/data/db
+
+  mongo-express-demo:
+    container_name: mongo-express-demo
+    build:
+      context: .
+      dockerfile: dockerfiles/MongoExpress.Dockerfile
+    restart: unless-stopped
+    environment:
+      - ME_CONFIG_BASICAUTH_USERNAME=admin
+      - ME_CONFIG_BASICAUTH_PASSWORD=demo
+      - ME_CONFIG_MONGODB_ADMINUSERNAME=mongoadmin
+      - ME_CONFIG_MONGODB_ADMINPASSWORD=demo
+      - ME_CONFIG_MONGODB_SERVER=mongodb-demo
+      - ME_CONFIG_OPTIONS_EDITORTHEME=dracula
+    ports:
+      - "8081:8081"
+
+  client-demo:
+    container_name: client-demo
+    build:
+      context: .
+      dockerfile: dockerfiles/Client.Dockerfile
+    restart: unless-stopped
+    environment:
+      - MONGODB_SERVER=mongodb-demo
+      - MONGODB_PORT=27017
+      - MONGODB_USER=mongoadmin
+      - MONGODB_PASS=demo
+    depends_on:
+      - mongodb-demo
