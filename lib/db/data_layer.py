@@ -9,11 +9,13 @@ from pymongo import MongoClient
 from pymongo.client_session import ClientSession
 from pymongo.errors import ConnectionFailure
 from pymongo.results import InsertOneResult, UpdateResult
+from tenacity import retry, TryAgain, stop_after_delay, wait_random, wait_fixed, RetryError
 
 _logger = logging.getLogger(__name__)
 
 
-def configure_client(server: str = None, port: str = None, user: str = None, password: str = None) -> MongoClient:
+@retry(wait=wait_fixed(3) + wait_random(0, 2), stop=stop_after_delay(90))
+def configure_client(server: str = None, port: str = None, user: str = None, password: str = None) -> Optional[MongoClient]:
     # todo: use dynaconf lib!
     # todo: set app name param in client!
 
@@ -29,13 +31,15 @@ def configure_client(server: str = None, port: str = None, user: str = None, pas
     # endregion
 
     uri = f'mongodb://{user}:{password}@{server}:{port}'
+    client = MongoClient(uri, serverSelectionTimeoutMS=3000)
 
     try:
-        client = MongoClient(uri)
+        client.admin.command('ismaster')
     except ConnectionFailure:
-        raise ConnectionError(f'Connecting to db server: "{server}" failed!')
-
-    return client
+        _logger.exception(f'Connecting to db server: "{server}:{port}" failed!')
+        raise TryAgain
+    else:
+        return client
 
 
 def find_documents(db_name: str, collection_name: str, query: Optional[dict] = None, projection: Optional[dict] = None) -> Generator[dict, None, None]:
@@ -44,19 +48,23 @@ def find_documents(db_name: str, collection_name: str, query: Optional[dict] = N
                  f'by query: "{query}" '
                  f'by projection: "{projection}"..')
 
-    client = configure_client()
-    db = client[db_name]
-    collection = db[collection_name]
+    try:
+        client = configure_client()
+    except RetryError:
+        _logger.exception(f'Tried to connect multiple times, surrendering now!')
+    else:
+        db = client[db_name]
+        collection = db[collection_name]
 
-    with client.start_session() as session:
-        cursor = collection.find(query, projection, no_cursor_timeout=True, session=session)
+        with client.start_session() as session:
+            cursor = collection.find(query, projection, no_cursor_timeout=True, session=session)
 
-        for document in cursor:
-            yield document
+            for document in cursor:
+                yield document
 
-            _refresh_session(client, session)
+                _refresh_session(client, session)
 
-        cursor.close()
+            cursor.close()
 
 
 def _refresh_session(client: MongoClient, session: ClientSession):
